@@ -17,8 +17,8 @@ jobs:
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
-      KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
+      TELEGRAM_BOT_TOKEN_NEWS: ${{ secrets.TELEGRAM_BOT_TOKEN_NEWS }}
+      TELEGRAM_CHAT_ID_NEWS: ${{ secrets.TELEGRAM_CHAT_ID_NEWS }}
       GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
       GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
     steps:
@@ -34,11 +34,12 @@ jobs:
 
       - name: check secrets
         run: |
-          echo "TELEGRAM_BOT_TOKEN  : ${#TELEGRAM_BOT_TOKEN} chars"
-          echo "TELEGRAM_CHAT_ID    : ${#TELEGRAM_CHAT_ID} chars"
-          echo "KAKAO_REST_API_KEY  : ${#KAKAO_REST_API_KEY} chars"
-          echo "GMAIL_ADDRESS       : ${#GMAIL_ADDRESS} chars"
-          echo "GMAIL_APP_PASSWORD  : ${#GMAIL_APP_PASSWORD} chars"
+          echo "TELEGRAM_BOT_TOKEN      : ${#TELEGRAM_BOT_TOKEN} chars"
+          echo "TELEGRAM_CHAT_ID        : ${#TELEGRAM_CHAT_ID} chars"
+          echo "TELEGRAM_BOT_TOKEN_NEWS : ${#TELEGRAM_BOT_TOKEN_NEWS} chars"
+          echo "TELEGRAM_CHAT_ID_NEWS   : ${#TELEGRAM_CHAT_ID_NEWS} chars"
+          echo "GMAIL_ADDRESS           : ${#GMAIL_ADDRESS} chars"
+          echo "GMAIL_APP_PASSWORD      : ${#GMAIL_APP_PASSWORD} chars"
 
       - run: python kakao_relay.py run
 
