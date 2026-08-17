@@ -50,7 +50,7 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────
 # 상수
 # ─────────────────────────────────────────────────────────────
-VERSION = "4.1"          # 이 값이 4.1 미만이면 예전 파일입니다
+VERSION = "4.2"          # 이 값이 4.2 미만이면 예전 파일입니다
 BUILD_DATE = "2026-08-16"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -936,6 +936,33 @@ def _imap_date(days_ago):
     return "%02d-%s-%d" % (t.tm_mday, _IMAP_MONTHS[t.tm_mon - 1], t.tm_year)
 
 
+def _select_mailbox(conn):
+    """전체보관함(All Mail)을 우선 선택합니다.
+
+    받은편지함만 보면, Gmail 필터가 '받은편지함 건너뛰기'로 보관해 버린 메일을
+    놓칩니다. 라벨을 붙이거나 자동 보관하는 필터가 생겨도 릴레이가 계속
+    동작하도록 \\All 특수 폴더를 찾아 선택하고, 없으면 INBOX 로 돌아갑니다.
+    """
+    try:
+        typ, boxes = conn.list()
+        if typ == "OK":
+            for raw in boxes or []:
+                line = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else str(raw)
+                if "\\All" not in line:
+                    continue
+                m = re.search(r'"([^"]*)"\s*$', line)
+                name = m.group(1) if m else line.split()[-1]
+                try:
+                    if conn.select('"%s"' % name, readonly=False)[0] == "OK":
+                        return name
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    conn.select("INBOX")
+    return "INBOX"
+
+
 def _search_candidates(conn, cfg, max_scan, days=3):
     """확인할 메일 번호 목록을 최대한 좁혀서 돌려줍니다.
 
@@ -1004,7 +1031,7 @@ def fetch_new_briefs(cfg, already_sent=(), max_scan=100, force=False):
     already_sent = set(already_sent or ())
     conn = _imap_connect(cfg)
     try:
-        conn.select("INBOX")
+        _select_mailbox(conn)
         uids = _search_candidates(conn, cfg, max_scan)
         if not uids:
             return []
@@ -1065,7 +1092,7 @@ def fetch_new_briefs(cfg, already_sent=(), max_scan=100, force=False):
 def mark_seen(cfg, uid):
     conn = _imap_connect(cfg)
     try:
-        conn.select("INBOX")
+        _select_mailbox(conn)
         conn.store(uid, "+FLAGS", "\\Seen")
     finally:
         try:
