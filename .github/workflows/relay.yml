@@ -8,39 +8,38 @@ name: kakao-briefing-relay
 
 concurrency:
   group: kakao-relay
-  cancel-in-progress: false
 
 jobs:
   relay:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+      KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
+      GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+      GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Korean font
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq fonts-nanum
-          fc-cache -f
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-nanum && fc-cache -f
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install deps
-        run: pip install --quiet requests pillow
+      - run: pip install --quiet requests pillow
 
-      - name: Run relay
-        env:
-          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
-          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
-          KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
-          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-        run: python kakao_relay.py run
+      - name: check secrets
+        run: |
+          echo "KAKAO_REST_API_KEY  : ${#KAKAO_REST_API_KEY} chars"
+          echo "KAKAO_REFRESH_TOKEN : ${#KAKAO_REFRESH_TOKEN} chars"
+          echo "GMAIL_ADDRESS       : ${#GMAIL_ADDRESS} chars"
+          echo "GMAIL_APP_PASSWORD  : ${#GMAIL_APP_PASSWORD} chars"
 
-      - name: Save state
+      - run: python kakao_relay.py run
+
+      - name: save state
         if: always()
         run: |
           if [ -f state.json ]; then
@@ -48,5 +47,5 @@ jobs:
             git config user.email "relay@users.noreply.github.com"
             git add state.json
             git diff --staged --quiet || git commit -m "update state [skip ci]"
-            git push || echo "push failed, will retry next run"
+            git push || echo "push failed"
           fi
