@@ -104,73 +104,231 @@ def _wrap(draw, text, font, max_w):
 
 SECTION_COLORS = ["#2E6FD9", "#C07A1E", "#158A6E", "#7A4FBF", "#B4531A", "#2B6CB0"]
 
+# 섹션 이름 → (색, 아이콘). 이름이 안 맞으면 순번 색 + 기본 마커.
+SECTION_PRESET = (
+    (("국제", "세계", "글로벌", "해외"), "#2E6FD9", "globe"),
+    (("정치", "외교", "안보"), "#7A4FBF", "gov"),
+    (("경제", "금융", "산업", "시장"), "#158A6E", "chart"),
+    (("스포츠", "체육"), "#B4531A", "ball"),
+    (("연예", "문화", "엔터"), "#C07A1E", "star"),
+    (("캄보디아", "프놈펜", "현지"), "#2B6CB0", "pin"),
+)
+
+
+def _preset(name, idx):
+    n = str(name or "")
+    for keys, col, icon in SECTION_PRESET:
+        if any(k in n for k in keys):
+            return _hex(col), icon
+    return _hex(SECTION_COLORS[idx % len(SECTION_COLORS)]), "dot"
+
+
+def _tint(rgb, ratio, base=WHITE):
+    """base 위에 얹은 옅은 색. ratio 0=base, 1=원색."""
+    return tuple(int(round(b + (c - b) * ratio)) for c, b in zip(rgb, base))
+
+
+def _icon(d, kind, cx, cy, r, col=WHITE, bg=NAVY):
+    """배지 안에 들어가는 단순 픽토그램."""
+    lw = max(2, int(round(r / 5.0)))
+    if kind == "globe":
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=col, width=lw)
+        d.ellipse([cx - r * 0.45, cy - r, cx + r * 0.45, cy + r], outline=col, width=max(1, lw - 1))
+        d.line([cx - r, cy, cx + r, cy], fill=col, width=max(1, lw - 1))
+    elif kind == "gov":          # 깃발
+        d.rectangle([cx - r * 0.62, cy - r * 0.95,
+                     cx - r * 0.62 + max(2, lw * 0.9), cy + r * 0.95], fill=col)
+        d.polygon([(cx - r * 0.34, cy - r * 0.88), (cx + r * 0.85, cy - r * 0.45),
+                   (cx - r * 0.34, cy - r * 0.02)], fill=col)
+    elif kind == "chart":
+        bw = r * 0.46
+        for i, hgt in enumerate((0.5, 0.78, 1.0)):
+            x0 = cx - r * 0.92 + i * (bw + r * 0.24)
+            d.rectangle([x0, cy + r * 0.8 - r * 1.7 * hgt, x0 + bw, cy + r * 0.8], fill=col)
+    elif kind == "ball":         # 트로피
+        d.polygon([(cx - r * 0.62, cy - r * 0.9), (cx + r * 0.62, cy - r * 0.9),
+                   (cx + r * 0.4, cy + r * 0.1), (cx - r * 0.4, cy + r * 0.1)], fill=col)
+        d.rectangle([cx - r * 0.14, cy + r * 0.05, cx + r * 0.14, cy + r * 0.55], fill=col)
+        d.rectangle([cx - r * 0.55, cy + r * 0.55, cx + r * 0.55, cy + r * 0.9], fill=col)
+    elif kind == "star":
+        pts = []
+        for i in range(10):
+            rad = math.radians(-90 + i * 36)
+            rr = r if i % 2 == 0 else r * 0.44
+            pts.append((cx + rr * math.cos(rad), cy + rr * math.sin(rad)))
+        d.polygon(pts, fill=col)
+    elif kind == "pin":
+        d.ellipse([cx - r * 0.78, cy - r * 0.95, cx + r * 0.78, cy + r * 0.45], fill=col)
+        d.polygon([(cx - r * 0.4, cy + r * 0.2), (cx + r * 0.4, cy + r * 0.2),
+                   (cx, cy + r)], fill=col)
+        d.ellipse([cx - r * 0.26, cy - r * 0.5, cx + r * 0.26, cy + r * 0.02], fill=bg)
+    else:
+        d.ellipse([cx - r * 0.5, cy - r * 0.5, cx + r * 0.5, cy + r * 0.5], fill=col)
+
+
+def _delta_mark(d, x, y, s, direction, col):
+    """▲ ▼ ─ 를 폰트에 의존하지 않고 직접 그립니다."""
+    if direction == "up":
+        d.polygon([(x + s / 2.0, y), (x, y + s), (x + s, y + s)], fill=col)
+    elif direction == "down":
+        d.polygon([(x, y), (x + s, y), (x + s / 2.0, y + s)], fill=col)
+    else:
+        d.rectangle([x, y + s * 0.38, x + s, y + s * 0.62], fill=col)
+
+
+def _clip(lines, limit):
+    """줄 수 제한. 잘렸으면 말줄임표를 붙입니다."""
+    if len(lines) <= limit:
+        return lines
+    out = list(lines[:limit])
+    if out and len(out[-1]) > 1:
+        out[-1] = out[-1][:-1] + "…"
+    return out
+
 
 def render_news_card(data, out_path="card.png"):
-    """섹션형 종합 뉴스 카드."""
+    """섹션형 종합 뉴스 카드 (인포그래픽)."""
     f = F()
-    img = Image.new("RGB", (W, 4000), PAPER)
+    w, pad = 720, 20
+    img = Image.new("RGB", (w, 6000), PAPER)
     d = ImageDraw.Draw(img)
 
+    sections = data.get("sections") or []
+    metrics = data.get("metrics") or []
+    total_items = sum(len(s.get("items") or []) for s in sections)
+    inner_w = w - 2 * pad
+
     # ── 헤더 ─────────────────────────────────────────────
-    head = data.get("headline")
-    hh = 118 if head else 92
-    d.rectangle([0, 0, W, hh], fill=NAVY)
-    d.text((22, 20), "DAILY NEWS BRIEFING", font=f(10, True), fill=HEAD_SUB)
-    d.text((22, 37), data.get("title", "종합 브리핑"), font=f(22, True), fill=WHITE)
+    head = str(data.get("headline") or "").strip()
+    head_lines = _clip(_wrap(d, head, f(14, True), inner_w - 30), 2) if head else []
+    hh = 102 + (len(head_lines) * 21 + 16 if head_lines else 0)
+    d.rectangle([0, 0, w, hh], fill=NAVY)
+    d.rectangle([0, 0, w, 4], fill=GOLD)
+    d.text((pad + 2, 22), "DAILY NEWS BRIEFING", font=f(10.5, True), fill=GOLD)
+    d.text((pad + 2, 39), data.get("title", "종합 브리핑"), font=f(25, True), fill=WHITE)
     sub = " · ".join(x for x in (data.get("date"), data.get("subtitle")) if x)
-    d.text((22, 68), sub, font=f(11), fill=HEAD_SUB)
-    if head:
-        for i, ln in enumerate(_wrap(d, head, f(12.5, True), W - 44)[:1]):
-            d.text((22, 90), ln, font=f(12.5, True), fill=HERO)
+    if sub:
+        d.text((pad + 2, 75), sub, font=f(11.5), fill=HEAD_SUB)
+    if sections:
+        badge = "%d개 분야 · %d건" % (len(sections), total_items)
+        bw = d.textlength(badge, font=f(11, True)) + 24
+        d.rounded_rectangle([w - pad - bw, 34, w - pad, 60], 13, fill=(31, 68, 103))
+        d.text((w - pad - bw + 12, 40), badge, font=f(11, True), fill=WHITE)
+    if head_lines:
+        hy = 98
+        d.rectangle([pad + 2, hy + 4, pad + 6, hy + len(head_lines) * 21 - 3], fill=HERO)
+        for i, ln in enumerate(head_lines):
+            d.text((pad + 17, hy + i * 21), ln, font=f(14, True), fill=HERO)
     y = hh + 16
 
-    for idx, sec in enumerate(data.get("sections") or []):
-        name = sec.get("name", "")
-        col = _hex(sec.get("color"), _hex(SECTION_COLORS[idx % len(SECTION_COLORS)]))
-        items = sec.get("items") or []
+    # ── 오늘의 지표 스트립 ───────────────────────────────
+    if metrics:
+        m = list(metrics)[:4]
+        gap, th = 10, 70
+        tw_ = (inner_w - gap * (len(m) - 1)) / float(len(m))
+        for i, mt in enumerate(m):
+            if not isinstance(mt, dict):
+                mt = {"label": str(mt)}
+            x0 = pad + i * (tw_ + gap)
+            d.rounded_rectangle([x0, y, x0 + tw_, y + th], 10, fill=WHITE, outline=LINE)
+            delta = str(mt.get("delta") or "")
+            dirn = str(mt.get("dir") or "").lower()
+            if not dirn:
+                dirn = "up" if delta.startswith("+") else ("down" if delta.startswith("-") else "flat")
+            col = UP if dirn == "up" else DOWN if dirn == "down" else MUTED
+            d.rounded_rectangle([x0, y + 13, x0 + 3, y + th - 13], 2, fill=col)
+            d.text((x0 + 14, y + 10), str(mt.get("label") or ""), font=f(10.5), fill=MUTED)
+            d.text((x0 + 14, y + 25), str(mt.get("value") or ""), font=f(18, True), fill=INK)
+            if delta:
+                _delta_mark(d, x0 + 14, y + 53, 8, dirn, col)
+                d.text((x0 + 26, y + 50), delta, font=f(11, True), fill=col)
+        y += th + 16
 
-        # 섹션 제목
-        d.rectangle([PAD, y + 3, PAD + 4, y + 17], fill=col)
-        d.text((PAD + 11, y), name, font=f(13, True), fill=INK)
-        y += 26
+    # ── 섹션 ─────────────────────────────────────────────
+    for idx, sec in enumerate(sections):
+        name = str(sec.get("name", "") or "")
+        col, icon = _preset(name, idx)
+        if sec.get("color"):
+            col = _hex(sec["color"], col)
+        icon = str(sec.get("icon") or icon)
 
-        inner = W - 2 * PAD - 28
-        blocks = []
-        for it in items:
-            if isinstance(it, (list, tuple)):
-                head_t, body_t = (list(it) + [""])[:2]
+        norm = []
+        for it in (sec.get("items") or []):
+            if isinstance(it, dict):
+                norm.append((str(it.get("head") or ""), str(it.get("body") or ""),
+                             str(it.get("tag") or "")[:3], bool(it.get("key"))))
+            elif isinstance(it, (list, tuple)):
+                a = list(it) + ["", "", ""]
+                norm.append((str(a[0] or ""), str(a[1] or ""), str(a[2] or "")[:3], False))
             else:
-                head_t, body_t = str(it), ""
-            blocks.append((str(head_t), _wrap(d, body_t, f(11.5), inner) if body_t else []))
+                norm.append((str(it), "", "", False))
 
-        box_h = 12
-        for ht, lines in blocks:
-            box_h += 18 + 16 * len(lines) + 9
-        box_h = max(box_h - 3, 30)
-        d.rounded_rectangle([PAD, y, W - PAD, y + box_h], 11, fill=WHITE, outline=LINE)
+        hf, bf, tf = f(13.5, True), f(11.5), f(9.5, True)
+        tx = pad + 62
+        tw = w - pad - 18 - tx
+        rows = []
+        for h_t, b_t, tag, key in norm:
+            hl = _clip(_wrap(d, h_t, hf, tw), 2)
+            bl = _clip(_wrap(d, b_t, bf, tw), 3) if b_t else []
+            rh = 11 + len(hl) * 19 + (len(bl) * 17 + 3 if bl else 0) + 12
+            rows.append((hl, bl, tag, key, rh))
 
-        ty = y + 11
-        for i, (ht, lines) in enumerate(blocks):
-            d.ellipse([PAD + 15, ty + 6, PAD + 21, ty + 12], fill=col)
-            for ln in _wrap(d, ht, f(12.5, True), inner)[:1]:
-                d.text((PAD + 28, ty), ln, font=f(12.5, True), fill=INK)
-            ty += 18
-            for ln in lines:
-                d.text((PAD + 28, ty), ln, font=f(11.5), fill=SUB)
-                ty += 16
-            ty += 9
-        y += box_h + 16
+        hdr_h = 42
+        total_h = hdr_h + sum(r[4] for r in rows) + 2
 
-    y += 4
-    d.line([PAD, y, W - PAD, y], fill=LINE)
-    y += 8
+        d.rounded_rectangle([pad, y, w - pad, y + total_h], 12, fill=WHITE, outline=LINE)
+        band = _tint(col, 0.10)
+        d.rounded_rectangle([pad + 1, y + 1, w - pad - 1, y + hdr_h], 12, fill=band)
+        d.rectangle([pad + 1, y + hdr_h - 12, w - pad - 1, y + hdr_h], fill=band)
+        d.line([pad + 1, y + hdr_h, w - pad - 1, y + hdr_h], fill=_tint(col, 0.30))
+
+        cy = y + hdr_h / 2.0
+        d.ellipse([pad + 16, cy - 15, pad + 46, cy + 15], fill=col)
+        _icon(d, icon, pad + 31, cy, 8.5, WHITE, col)
+        d.text((pad + 56, cy - 10), name, font=f(14.5, True), fill=col)
+        cnt = "%d건" % len(rows)
+        d.text((w - pad - 16 - d.textlength(cnt, font=f(10.5, True)), cy - 7),
+               cnt, font=f(10.5, True), fill=_tint(col, 0.55, MUTED))
+
+        ry = y + hdr_h + 1
+        for i, (hl, bl, tag, key, rh) in enumerate(rows):
+            if key:
+                d.rectangle([pad + 1, ry, w - pad - 1, ry + rh], fill=_tint(col, 0.06))
+                d.rectangle([pad + 1, ry, pad + 5, ry + rh], fill=col)
+            elif i:
+                d.line([tx, ry, w - pad - 18, ry], fill=LINE)
+            ty = ry + 11
+            if tag:
+                twd = d.textlength(tag, font=tf)
+                pw = min(max(twd + 14, 30), 44)
+                d.rounded_rectangle([pad + 16, ty + 1, pad + 16 + pw, ty + 18], 8,
+                                    fill=_tint(col, 0.17))
+                d.text((pad + 16 + (pw - twd) / 2.0, ty + 4), tag, font=tf, fill=col)
+            else:
+                d.ellipse([pad + 26, ty + 6, pad + 34, ty + 14], fill=col)
+            for j, ln in enumerate(hl):
+                d.text((tx, ty + j * 19), ln, font=hf, fill=INK)
+            ty += len(hl) * 19
+            if bl:
+                ty += 3
+                for ln in bl:
+                    d.text((tx, ty), ln, font=bf, fill=SUB)
+                    ty += 17
+            ry += rh
+        y += total_h + 14
+
+    # ── 꼬리말 ───────────────────────────────────────────
+    y += 2
+    d.line([pad, y, w - pad, y], fill=LINE)
+    y += 10
     foot = data.get("footer") or "공개된 언론 보도를 정리한 참고 자료입니다."
-    for ln in _wrap(d, foot, f(10), W - 2 * PAD)[:3]:
-        d.text((PAD, y), ln, font=f(10), fill=MUTED); y += 14
-    y += 12
+    for ln in _clip(_wrap(d, foot, f(10), inner_w), 3):
+        d.text((pad, y), ln, font=f(10), fill=MUTED)
+        y += 14
+    y += 14
 
-    img = img.crop((0, 0, W, min(int(y), 4000)))
-    img = img.convert("P", palette=Image.ADAPTIVE, colors=64)
+    img = img.crop((0, 0, w, min(int(y), 6000)))
+    img = img.convert("P", palette=Image.ADAPTIVE, colors=96)
     img.save(out_path, optimize=True)
     return out_path
 
