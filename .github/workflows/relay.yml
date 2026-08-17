@@ -15,6 +15,8 @@ jobs:
     permissions:
       contents: write
     env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
       KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
       GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
@@ -32,8 +34,9 @@ jobs:
 
       - name: check secrets
         run: |
+          echo "TELEGRAM_BOT_TOKEN  : ${#TELEGRAM_BOT_TOKEN} chars"
+          echo "TELEGRAM_CHAT_ID    : ${#TELEGRAM_CHAT_ID} chars"
           echo "KAKAO_REST_API_KEY  : ${#KAKAO_REST_API_KEY} chars"
-          echo "KAKAO_REFRESH_TOKEN : ${#KAKAO_REFRESH_TOKEN} chars"
           echo "GMAIL_ADDRESS       : ${#GMAIL_ADDRESS} chars"
           echo "GMAIL_APP_PASSWORD  : ${#GMAIL_APP_PASSWORD} chars"
 
