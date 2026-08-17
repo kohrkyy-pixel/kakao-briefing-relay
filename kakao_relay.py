@@ -50,7 +50,7 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────
 # 상수
 # ─────────────────────────────────────────────────────────────
-VERSION = "3.2"          # 이 값이 3.2 미만이면 예전 파일입니다
+VERSION = "3.3"          # 이 값이 3.3 미만이면 예전 파일입니다
 BUILD_DATE = "2026-08-16"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -254,8 +254,22 @@ def prompt_for_config(cfg=None):
     return cfg
 
 
+ENV_KEYS = {
+    "kakao_rest_api_key": "KAKAO_REST_API_KEY",
+    "kakao_client_secret": "KAKAO_CLIENT_SECRET",
+    "gmail_address": "GMAIL_ADDRESS",
+    "gmail_app_password": "GMAIL_APP_PASSWORD",
+}
+
+
 def load_config(interactive=False):
     cfg = load_json(CONFIG_PATH) or {}
+
+    # 환경변수가 있으면 우선 적용합니다 (GitHub Actions 등 무인 실행용)
+    for key, env in ENV_KEYS.items():
+        val = os.environ.get(env)
+        if val and val.strip():
+            cfg[key] = val.strip()
 
     missing = [k for k in REQUIRED if _is_blank(cfg.get(k))]
     if missing:
@@ -476,8 +490,15 @@ def cmd_setup():
 # ─────────────────────────────────────────────────────────────
 def get_access_token(cfg):
     tok = load_json(TOKEN_PATH)
+
+    # tokens.json 이 없으면 환경변수의 리프레시 토큰으로 발급받습니다
+    env_refresh = os.environ.get("KAKAO_REFRESH_TOKEN", "").strip()
+    if not tok and env_refresh:
+        tok = {"refresh_token": env_refresh, "obtained_at": 0, "expires_in": 0}
+
     if not tok:
-        raise RuntimeError("토큰이 없습니다. 먼저 'python kakao_relay.py setup' 을 실행하세요.")
+        raise RuntimeError("토큰이 없습니다. 먼저 'python kakao_relay.py setup' 을 실행하거나 "
+                           "KAKAO_REFRESH_TOKEN 환경변수를 설정하세요.")
 
     age = int(time.time()) - tok.get("obtained_at", 0)
     # 액세스 토큰은 보통 6시간(21600초). 5분 여유를 두고 갱신합니다.
@@ -511,6 +532,9 @@ def get_access_token(cfg):
     tok["obtained_at"] = int(time.time())
     if "refresh_token" in new:  # 카카오는 리프레시 토큰이 1개월 미만 남았을 때만 새로 줍니다
         tok["refresh_token"] = new["refresh_token"]
+        log("★ 새 리프레시 토큰이 발급됐습니다. 무인 실행 중이라면 "
+            "KAKAO_REFRESH_TOKEN 시크릿을 아래 값으로 갱신하세요:")
+        log("  %s" % new["refresh_token"])
         tok["refresh_token_expires_in"] = new.get("refresh_token_expires_in",
                                                   tok.get("refresh_token_expires_in", 5184000))
     save_json(TOKEN_PATH, tok)
