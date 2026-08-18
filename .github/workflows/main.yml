@@ -4,7 +4,7 @@ name: kakao-briefing-relay
     # 아침 3종 — 캄보디아 04:00~07:00 (UTC 21~23시)
     - cron: '3,18,33,48 21-23 * * *'
     # 장중 — 캄보디아 07:00~13:59 (UTC 0~6시), 평일만
-    - cron: '3,18,33,48 0-6 * * 1-5'
+    - cron: '*/15 0-6 * * 1-5'
   workflow_dispatch:
     inputs:
       mode:
