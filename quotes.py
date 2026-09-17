@@ -61,9 +61,8 @@ BUDGET_SEC = 70
 REQ_TIMEOUT = 6
 
 STOCKS = [
-    ("005930", "삼성전자"),
-    ("000660", "SK하이닉스"),
-    ("009150", "삼성전기"),
+    ("005380", "현대차"),
+    ("128660", "피제이메탈"),
 ]
 MARKETS = [
     ("KOSPI", "코스피", "^KS11", "^kospi"),
@@ -149,7 +148,11 @@ def _yahoo(symbol):
 
 
 def src_yahoo(code):
-    return _yahoo(code + ".KS")
+    try:
+        return _yahoo(code + ".KS")
+    except Exception:
+        return _yahoo(code + ".KQ")
+
 
 
 # ── 소스 4: 스투크 CSV ────────────────────────────────────
